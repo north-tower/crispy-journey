@@ -2,9 +2,16 @@ import { View, Text, SafeAreaView, Button } from 'react-native'
 import React, { useState } from 'react'
 import tw from 'twrnc';
 import AdDisplay from '../components/AdDisplay';
+import CallDetectorManager, { Event } from 'react-native-call-detection';
+
 
 const HomeScreen = () => {
   const [showAd, setShowAd] = useState<boolean>(false);
+   // to keep callDetector reference
+   let callDetector: CallDetectorManager | undefined = undefined;
+
+   const [callStates, setCallStates] = useState<string[]>([]);
+   const [isStart, setIsStart] = useState<boolean>(false);
 
   const handleShowAd = () => {
     setShowAd(true);
