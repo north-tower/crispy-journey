@@ -1,199 +1,126 @@
-// How to Detect Call States in React Native App
-// https://aboutreact.com/detect-call-states/
+import {NavigationContainer} from '@react-navigation/native';
+import {createNativeStackNavigator} from '@react-navigation/native-stack';
+import 'intl-pluralrules';
+import React, { useEffect, useState } from 'react';
+import {I18nextProvider} from 'react-i18next';
+import {SafeAreaView, StatusBar} from 'react-native';
+//import {useCallDetection} from './src/hooks/useCallDetection';
+import i18n from './src/lang/i18n';
+import TabNavigation from './src/navigation/TabNavigation';
+import LoginScreen from './src/screens/LoginScreen';
+import PushNotification from 'react-native-push-notification';
+import CallDetectorManager, {Event} from 'react-native-call-detection';
+import AdDisplay from './src/components/AdDisplay';
 
-// Import React
-import React, { useState, useEffect } from 'react';
-
-// Import required components
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  Linking,
-  FlatList,
-  SafeAreaView,
-  Image,
-} from 'react-native';
-
-// Import Call Detector
-import CallDetectorManager, { Event } from 'react-native-call-detection';
+const Stack = createNativeStackNavigator();
 
 const App: React.FC = () => {
-  // to keep callDetector reference
-  let callDetector: CallDetectorManager | undefined = undefined;
+  // useCallDetection(event => {
+  //   console.log('Call detected:', event);
+  //   // You can add more logic here, such as showing a notification or updating the UI
+  // });
+  const key = Date.now().toString(); // Key must be unique everytime
+  const [showAd, setShowAd] = useState<boolean>(false);
 
-  const [callStates, setCallStates] = useState<string[]>([]);
-  const [isStart, setIsStart] = useState<boolean>(false);
-  const [flatListItems, setFlatListItems] = useState<string[]>([]);
 
-  const callFriendTapped = () => {
-    Linking.openURL('tel:5555555555').catch((err) => {
-      console.log(err);
-    });
+  useEffect(() => {
+    // Create a channel (required for Android 8.0 and higher)
+    PushNotification.createChannel(
+     {
+       channelId: key, // Required: You can change this id
+       channelName: "Default Channel", // Required: You can change this name
+       channelDescription: "A default channel", // Optional: Description of your channel
+       soundName: "default", // Optional: 'default' means use the default sound
+       importance: 4, // Optional: Default importance (4) is high
+       vibrate: true, // Optional: Default is true
+     },
+     (created) => console.log(`createChannel returned '${created}'`) // Log if the channel was created successfully
+   );
+   // Configure Push Notifications
+   PushNotification.configure({
+     onNotification: function (notification) {
+       console.log('NOTIFICATION:', notification);
+     },
+     popInitialNotification: true,
+     requestPermissions: Platform.OS === 'ios',
+   });
+ }, []);
+
+
+ useEffect(() => {
+  const callDetector = new CallDetectorManager(
+    (event: Event, number: string) => {
+      console.log('event -> ', event + (number ? ' - ' + number : ''));
+  
+
+      if (event === 'Disconnected') {
+        setShowAd(true); // Show ad when call is disconnected
+
+        // Trigger a push notification when the call is disconnected
+        PushNotification.localNotification({
+          channelId: key, // Use the same channelId as created earlier
+          title: "Call Disconnected",
+          message: "A phone call has been disconnected.",
+          playSound: true,
+          soundName: "default",
+          importance: "high",
+          priority: "high",
+        });
+      }
+    },
+    true, // To detect incoming calls [ANDROID]
+    () => {
+      console.log('Permission Denied by User');
+    },
+    {
+      title: 'Phone State Permission',
+      message:
+        'This app needs access to your phone state in order to react and/or to adapt to incoming calls.',
+    },
+  );
+
+  return () => {
+    callDetector.dispose(); // Clean up the call detector when the component unmounts
   };
+}, []);
 
-  const startStopListener = () => {
-    if (isStart) {
-      console.log('Stop');
-      callDetector?.dispose();
-    } else {
-      console.log('Start');
-      callDetector = new CallDetectorManager(
-        (event: Event, number: string) => {
-          console.log(
-            'event -> ',
-            event + (number ? ' - ' + number : '')
-          );
-          const updatedCallStates = [...callStates, event + (number ? ' - ' + number : '')];
-          setFlatListItems(updatedCallStates);
-          setCallStates(updatedCallStates);
-
-          // For iOS event will be either "Connected",
-          // "Disconnected","Dialing" and "Incoming"
-
-          // For Android event will be either "Offhook",
-          // "Disconnected", "Incoming" or "Missed"
-          // phoneNumber should store caller/called number
-
-          if (event === 'Disconnected') {
-            // Do something call got disconnected
-          } else if (event === 'Connected') {
-            // Do something call got connected
-            // This clause will only be executed for iOS
-          } else if (event === 'Incoming') {
-            // Do something call got incoming
-          } else if (event === 'Dialing') {
-            // Do something call got dialing
-            // This clause will only be executed for iOS
-          } else if (event === 'Offhook') {
-            // Device call state: Off-hook.
-            // At least one call exists that is dialing,
-            // active, or on hold,
-            // and no calls are ringing or waiting.
-            // This clause will only be executed for Android
-          } else if (event === 'Missed') {
-            // Do something call got missed
-            // This clause will only be executed for Android
-          }
-        },
-        true, // To detect incoming calls [ANDROID]
-        () => {
-          // If your permission got denied [ANDROID]
-          // Only if you want to read incoming number
-          // Default: console.error
-          console.log('Permission Denied by User');
-        },
-        {
-          title: 'Phone State Permission',
-          message:
-            'This app needs access to your phone state in order to react and/or to adapt to incoming calls.',
-        },
-      );
-    }
-    setIsStart(!isStart);
-  };
-
-  const listSeparator = () => {
-    return (
-      <View
-        style={{
-          height: 0.5,
-          width: '100%',
-          backgroundColor: '#ebebeb',
-        }}
-      />
-    );
-  };
+const handleCloseAd = () => {
+  setShowAd(false);
+};
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTextLarge}>Call Detection</Text>
-          {/* <Text style={styles.headerText}>www.aboutreact.com</Text> */}
-        </View>
-        <FlatList
-          style={{ flex: 1 }}
-          data={flatListItems}
-          ItemSeparatorComponent={listSeparator}
-          renderItem={({ item }) => (
-            <View style={{ flex: 1 }}>
-              <Text style={styles.callLogs}>{JSON.stringify(item)}</Text>
-            </View>
-          )}
-          keyExtractor={(item, index) => index.toString()}
-        />
-        <TouchableOpacity style={styles.button} onPress={startStopListener}>
-          <Text style={styles.buttonText}>{isStart ? 'Stop Listener' : 'Start Listener'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity activeOpacity={0.7} onPress={callFriendTapped} style={styles.fabStyle}>
-          <Image
-            source={{
-              uri: 'https://raw.githubusercontent.com/AboutReact/sampleresource/master/input_phone.png',
-            }}
-            style={styles.fabImageStyle}
-          />
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+<>
+    {showAd ? (
+      <AdDisplay
+        adImage="https://cdn.worldvectorlogo.com/logos/coca-cola-2021.svg"
+        adLink="https://videos.pexels.com/video-files/7722624/7722624-uhd_1440_2560_25fps.mp4"
+        onClose={handleCloseAd}
+      />
+    ) : (
+    <I18nextProvider i18n={i18n}>
+      <NavigationContainer>
+        <SafeAreaView style={{flex: 1, backgroundColor: '#161622'}}>
+          <StatusBar barStyle="light-content" backgroundColor="#161622" />
+          <Stack.Navigator initialRouteName="Tabs">
+            <Stack.Screen
+              name="Tabs"
+              component={TabNavigation}
+              options={{headerShown: false}}
+            />
+            <Stack.Screen
+              name="Login"
+              component={LoginScreen}
+              options={{headerShown: false}}
+            />
+          </Stack.Navigator>
+        </SafeAreaView>
+      </NavigationContainer>
+    </I18nextProvider>
+    )}
+
+</>
+
   );
 };
 
 export default App;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5FCFF',
-  },
-  header: {
-    backgroundColor: '#ff8c21',
-    padding: 10,
-  },
-  headerTextLarge: {
-    textAlign: 'center',
-    fontSize: 20,
-    color: 'white',
-  },
-  headerText: {
-    marginTop: 5,
-    textAlign: 'center',
-    fontSize: 18,
-    color: 'white',
-  },
-  button: {
-    alignItems: 'center',
-    backgroundColor: '#ff8c21',
-    padding: 10,
-    justifyContent: 'center',
-    height: 60,
-    width: '100%',
-  },
-  buttonText: {
-    textAlign: 'center',
-    fontSize: 18,
-    color: 'white',
-  },
-  callLogs: {
-    padding: 16,
-    fontSize: 16,
-    color: '#333333',
-  },
-  fabStyle: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 60 / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    right: 30,
-    bottom: 30,
-    backgroundColor: 'yellow',
-  },
-  fabImageStyle: {
-    resizeMode: 'contain',
-    width: 20,
-    height: 20,
-  },
-});
